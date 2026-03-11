@@ -1,10 +1,8 @@
 name: 📈 V8.7 ETF动量轮动 - 每周五自动信号
 
 on:
-  # 每周五 14:45 (北京时间 UTC+8 = UTC 06:45)
   schedule:
     - cron: '45 6 * * 5'
-  # 允许手动触发（用于测试）
   workflow_dispatch:
     inputs:
       strategy:
@@ -22,24 +20,20 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # 1. 拉取仓库代码（包含最新的 portfolio_state.json）
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      # 2. 配置 Python 环境
       - name: 🐍 Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      # 3. 安装依赖
       - name: 📦 Install dependencies
         run: |
           pip install --upgrade pip
           pip install pandas numpy akshare requests
 
-      # 4. 运行策略脚本，将输出保存到文件
       - name: 🚀 Run strategy signal engine
         id: run_signal
         run: |
@@ -49,31 +43,34 @@ jobs:
           echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      # 5. 提取关键信号摘要
       - name: 📋 Extract signal summary
+        id: extract
         run: |
           python3 - <<'EOF'
+          import os
           with open("signal_output.txt", "r", encoding="utf-8") as f:
               content = f.read()
-
           lines = content.split("\n")
           summary_lines = []
           capture = False
-
           for line in lines:
               if "V8.7 LIVE DASHBOARD" in line:
                   capture = True
               if capture:
                   summary_lines.append(line)
-
-          summary = "\n".join(summary_lines) if summary_lines else content[-3000:]
-
+          if summary_lines:
+              summary = "\n".join(summary_lines)
+          else:
+              summary = content[-2000:] if len(content) > 2000 else content
           with open("signal_summary.txt", "w", encoding="utf-8") as f:
               f.write(summary)
-          print("Summary extracted successfully.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("summary<<SUMMARY_EOF\n")
+              f.write(summary[:3000])
+              f.write("\nSUMMARY_EOF\n")
+          print(f"Summary length: {len(summary)} chars")
           EOF
 
-      # 6. 将更新后的 portfolio_state.json 提交回仓库
       - name: 💾 Commit updated portfolio state
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -86,7 +83,6 @@ jobs:
             git push
           fi
 
-      # 7. 将完整输出上传为 Artifact（可在 GitHub Actions 页面下载查看）
       - name: 📎 Upload signal output as artifact
         uses: actions/upload-artifact@v4
         if: always()
@@ -98,7 +94,6 @@ jobs:
             portfolio_state.json
           retention-days: 30
 
-      # 8. 发送邮件通知（通过 SMTP_SERVER / SMTP_PORT 支持任意服务商）
       - name: 📧 Send email notification
         if: always()
         uses: dawidd6/action-send-mail@v3
@@ -111,4 +106,18 @@ jobs:
           to: ${{ secrets.MAIL_TO }}
           from: "V8.7 量化信号机器人 <${{ secrets.MAIL_USERNAME }}>"
           subject: "📈 V8.7 ETF轮动信号 | ${{ steps.run_signal.outputs.strategy }} 模式 | 第${{ github.run_number }}期"
-          body_file: signal_summary.txt
+          body: |
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            V8.7 跨资产ETF动量轮动系统 - 本周信号
+            运行编号：#${{ github.run_number }}
+            策略模式：${{ steps.run_signal.outputs.strategy }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+            ${{ steps.extract.outputs.summary }}
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            完整输出请在 GitHub Actions Artifacts 中下载查看：
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            提示：请在周五 14:45-15:00 之间执行下单，先 SELL 后 BUY。
+          attachments: signal_summary.txt
