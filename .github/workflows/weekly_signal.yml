@@ -1,0 +1,147 @@
+name: 📈 V8.7 ETF动量轮动 - 每周五自动信号
+
+on:
+  # 每周五 14:45 (北京时间 UTC+8 = UTC 06:45)
+  schedule:
+    - cron: '45 6 * * 5'
+  # 允许手动触发（用于测试）
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: '策略模式 (final 或 pure)'
+        required: false
+        default: 'final'
+        type: choice
+        options:
+          - final
+          - pure
+
+jobs:
+  run-signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 1. 拉取仓库代码（包含最新的 portfolio_state.json）
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 配置 Python 环境
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 3. 安装依赖
+      - name: 📦 Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas numpy akshare requests
+
+      # 4. 运行策略脚本，将输出保存到文件
+      - name: 🚀 Run strategy signal engine
+        id: run_signal
+        run: |
+          STRATEGY="${{ github.event.inputs.strategy || 'final' }}"
+          echo "Running strategy: $STRATEGY"
+          python v8_live_signal.py --strategy $STRATEGY 2>&1 | tee signal_output.txt
+          echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # 5. 提取关键信号摘要
+      - name: 📋 Extract signal summary
+        id: summary
+        run: |
+          # 提取关键行到摘要文件
+          python3 - <<'EOF'
+          import re
+
+          with open("signal_output.txt", "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # 提取关键信息
+          lines = content.split("\n")
+          summary_lines = []
+          capture = False
+
+          for line in lines:
+              # 捕获 Dashboard 主体
+              if "V8.7 LIVE DASHBOARD" in line:
+                  capture = True
+              if capture:
+                  summary_lines.append(line)
+
+          summary = "\n".join(summary_lines) if summary_lines else content[-3000:]
+
+          with open("signal_summary.txt", "w", encoding="utf-8") as f:
+              f.write(summary)
+
+          print("Summary extracted successfully.")
+          print(f"Total output lines: {len(lines)}")
+          EOF
+
+      # 6. 将更新后的 portfolio_state.json 提交回仓库
+      - name: 💾 Commit updated portfolio state
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "GitHub Actions Bot"
+          git add portfolio_state.json
+          if git diff --staged --quiet; then
+            echo "No changes to portfolio_state.json"
+          else
+            git commit -m "🤖 Auto-update portfolio_state.json [$(date '+%Y-%m-%d %H:%M')]"
+            git push
+          fi
+
+      # 7. 将完整输出上传为 Artifact（可在 GitHub Actions 页面下载查看）
+      - name: 📎 Upload signal output as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signal-output-${{ github.run_number }}-${{ steps.run_signal.outputs.strategy }}
+          path: |
+            signal_output.txt
+            signal_summary.txt
+            portfolio_state.json
+          retention-days: 30
+
+      # 8. 发送邮件通知（需要配置 Secrets）
+      - name: 📧 Send email notification
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: "V8.7 量化信号机器人 <${{ secrets.MAIL_USERNAME }}>"
+          subject: "📈 V8.7 ETF轮动信号 | ${{ steps.run_signal.outputs.strategy }} 模式 | ${{ github.run_number }}期"
+          body: |
+            您好，
+
+            V8.7 跨资产ETF动量轮动系统已完成本周信号计算。
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            运行时间：${{ github.event.repository.updated_at }}
+            策略模式：${{ steps.run_signal.outputs.strategy }}
+            运行编号：#${{ github.run_number }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+            请登录 GitHub Actions 页面查看完整的交易信号和下单指令：
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            在 Artifacts 中下载 signal_output.txt 文件即可查看完整的控制台输出，
+            包括本周应执行的买入/卖出指令。
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ⚠️ 重要提示：
+            1. 请在周五 14:45-15:00 之间执行下单操作
+            2. 先执行 SELL 指令，再执行 BUY 指令
+            3. 如触发宏观风控警报，请人工核验后再操作
+
+            祝投资顺利，净值长虹！
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          attachments: signal_summary.txt
