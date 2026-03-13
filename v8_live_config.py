@@ -72,7 +72,7 @@ class Config:
     MARKET_ANCHOR = "513500"
 
     # --- 实盘订单生成约束 ---
-    INITIAL_CAPITAL = 100000.0
+    INITIAL_CAPITAL = 50000.0
     PORTFOLIO_STATE_PATH = "portfolio_state.json"
     DEFAULT_LOT_SIZE = 100
     LOT_SIZE_BY_CODE = {"511880": 100, "511260": 100, "518880": 100}
