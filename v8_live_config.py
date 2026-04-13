@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-V8.7 Live Config (18日动量 + 标普宏观真锚 + 宏观防抖 + 自动平替拦截 + 硬止损熔断)
+V8.8 Live Config (18日动量 + 标普宏观真锚 + 宏观防抖 + 自动平替拦截 + 硬止损熔断)
 V8.7 变更：
 - 新增 HARD_STOP 硬止损系列参数（单只-8%强制清仓、组合-12%全面熔断）
 - 新增 COOLDOWN_WEEKS 冷静期
 - 新增 AUTO_SAVE_STATE 自动回写 portfolio_state.json
+V8.8 变更：
+- 新增合成信号参数：RSRS_NORM_WINDOW / RSRS_WEIGHT / MOMENTUM_* / VOL_PARITY_*
 """
 import datetime
 
@@ -29,7 +31,7 @@ class Config:
     MIN_REBAL_ENABLED = True
     MIN_REBAL_TURNOVER = 0.05
 
-    # === 🛑 硬止损 & 熔断参数 (V8.7 新增) ===
+    # === 🛑 硬止损 & 熔断参数 (V8.7) ===
     HARD_STOP_ENABLED = True            # 硬止损总开关
     SINGLE_POSITION_STOP = -0.08        # 单只持仓从买入价跌8%强制清仓
     PORTFOLIO_DRAWDOWN_STOP = -0.12     # 组合从净值峰值回撤12%全面熔断
@@ -71,8 +73,24 @@ class Config:
     # ✅ [致敬您的宏观逻辑：坚决还原全球流动性危机定价之真锚]
     MARKET_ANCHOR = "513500"
 
+    # === 合成信号参数 (V8.8 新增) ===
+    # RSRS z-score: 对滚动OLS斜率做历史标准化，替换原有 r³/std_x 非标公式
+    RSRS_NORM_WINDOW = 600      # z-score标准化的历史窗口（交易日），min 60
+    RSRS_WEIGHT = 0.5           # 合成评分中 RSRS z-score 的权重
+
+    # 3月动量因子: shift(5)/shift(68) 跳过最近1周避免短期反转
+    MOMENTUM_LOOKBACK = 63      # 动量回溯期（交易日，约3个月）
+    MOMENTUM_SKIP = 5           # 跳过最近N天
+    MOMENTUM_NORM_WINDOW = 600  # 动量 z-score 标准化窗口
+    MOMENTUM_WEIGHT = 0.5       # 合成评分中动量的权重
+
+    # 波动率平价权重 (V8.8 新增): True=按波动率倒数分配，False=原等权
+    VOL_PARITY_ENABLED = True
+    VOL_PARITY_WINDOW = 20      # 已实现波动率计算窗口（交易日）
+    VOL_PARITY_ANNUALIZE = 252
+
     # --- 实盘订单生成约束 ---
-    INITIAL_CAPITAL = 50000.0
+    INITIAL_CAPITAL = 100000.0
     PORTFOLIO_STATE_PATH = "portfolio_state.json"
     DEFAULT_LOT_SIZE = 100
     LOT_SIZE_BY_CODE = {"511880": 100, "511260": 100, "518880": 100}
