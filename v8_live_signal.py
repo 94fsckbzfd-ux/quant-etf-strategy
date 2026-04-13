@@ -48,7 +48,7 @@ from v8_live_config import Config
 warnings.filterwarnings("ignore")
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-LIVE_START_DATE = (datetime.datetime.now() - datetime.timedelta(days=365)).strftime("%Y%m%d")
+LIVE_START_DATE = (datetime.datetime.now() - datetime.timedelta(days=365 * 3)).strftime("%Y%m%d")
 
 direct_session = requests.Session()
 direct_session.trust_env = False 
@@ -214,11 +214,15 @@ def compute_scores(close_panel: pd.DataFrame) -> pd.DataFrame:
     mom_w  = getattr(Config, "MOMENTUM_WEIGHT", 0.5)
 
     # 核心池：RISK + SAFE + 现金 + 锚点（平替代码不入榜）
+    anchor_code = str(getattr(Config, "MARKET_ANCHOR", "")).zfill(6)
+    cash_code   = getattr(Config, "CASH_CODE", "511880")
+    # 锚点和现金只用 RSRS-only，不叠加动量，防止价格惯性污染宏观制度判断
+    rsrs_only_codes = {anchor_code, cash_code}
+
     target_codes = set(
         list(getattr(Config, "RISK_POOL", {}).keys()) +
         list(getattr(Config, "SAFE_POOL", {}).keys()) +
-        [getattr(Config, "CASH_CODE", "511880"),
-         str(getattr(Config, "MARKET_ANCHOR", "")).zfill(6)]
+        [cash_code, anchor_code]
     )
 
     for code in close_panel.columns:
@@ -226,15 +230,19 @@ def compute_scores(close_panel: pd.DataFrame) -> pd.DataFrame:
             continue
         s = close_panel[code]
         rsrs_z = calculate_rsrs(s, n)
-        mom_z  = calculate_momentum_zscore(s)
-        # 两个因子都有值时合成，否则退化为单因子
-        composite = rsrs_z * rsrs_w + mom_z * mom_w
-        # 边界：任一因子全为 NaN 则退化为另一个
-        only_rsrs = mom_z.isna() & rsrs_z.notna()
-        only_mom  = rsrs_z.isna() & mom_z.notna()
-        composite[only_rsrs] = rsrs_z[only_rsrs]
-        composite[only_mom]  = mom_z[only_mom]
-        scores[code] = composite
+
+        if code in rsrs_only_codes:
+            # 锚点/现金：纯 RSRS 趋势信号，宏观判断不受动量干扰
+            scores[code] = rsrs_z
+        else:
+            mom_z = calculate_momentum_zscore(s)
+            # 两个因子都有值时合成，否则退化为单因子
+            composite = rsrs_z * rsrs_w + mom_z * mom_w
+            only_rsrs = mom_z.isna() & rsrs_z.notna()
+            only_mom  = rsrs_z.isna() & mom_z.notna()
+            composite[only_rsrs] = rsrs_z[only_rsrs]
+            composite[only_mom]  = mom_z[only_mom]
+            scores[code] = composite
 
     return scores
 
@@ -274,7 +282,7 @@ def _fetch_historical_premium_mean(code: str, n_days: int) -> float:
 
 def fetch_from_tencent(code: str) -> pd.Series:
     market = 'sh' if code.startswith(('5', '6', '11', '588')) else 'sz'
-    url = f"http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={market}{code},day,,,250,qfq"
+    url = f"http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={market}{code},day,,,800,qfq"
     resp = direct_session.get(url, timeout=5)
     resp.raise_for_status()
     data = resp.json()
@@ -311,7 +319,7 @@ def fetch_close_panel(codes: list[str]) -> pd.DataFrame:
         if not success:
             try:
                 time.sleep(0.5)
-                df = ak.stock_zh_a_hist(symbol=str_code, period="daily", start_date=LIVE_START_DATE, end_date=Config.END_DATE, adjust="hfq")
+                df = ak.stock_zh_a_hist(symbol=str_code, period="daily", start_date=LIVE_START_DATE, end_date=Config.END_DATE, adjust="qfq")
                 if df is not None and not df.empty and "收盘" in df.columns:
                     df = df[["日期", "收盘"]].rename(columns={"日期": "date", "收盘": str_code})
                     df["date"] = pd.to_datetime(df["date"])
