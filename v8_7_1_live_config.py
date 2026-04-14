@@ -31,7 +31,7 @@ class Config:
     MIN_REBAL_TURNOVER = 0.05
 
     # === 🛑 硬止损 & 熔断参数 (V8.7 新增) ===
-    HARD_STOP_ENABLED = True            # 硬止损总开关
+    HARD_STOP_ENABLED = False            # 硬止损总开关
     SINGLE_POSITION_STOP = -0.08        # 单只持仓从买入价跌8%强制清仓
     PORTFOLIO_DRAWDOWN_STOP = -0.12     # 组合从净值峰值回撤12%全面熔断
     COOLDOWN_WEEKS = 2                  # 熔断后冷静期周数
