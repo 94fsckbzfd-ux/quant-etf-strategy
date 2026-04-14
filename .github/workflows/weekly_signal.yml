@@ -44,7 +44,7 @@ jobs:
           echo "Running strategy: $STRATEGY"
           # 注意：请确保此处运行的 Python 文件名与您仓库里的文件名一致
           # 如果您依然叫 v8_live_signal.py，请把下方改成 v8_live_signal.py
-          python v8.7.1_live_signal.py --strategy $STRATEGY 2>&1 | tee signal_output.txt
+          python v8_7_1_live_signal.py --strategy $STRATEGY 2>&1 | tee signal_output.txt
           echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
         continue-on-error: true
 
