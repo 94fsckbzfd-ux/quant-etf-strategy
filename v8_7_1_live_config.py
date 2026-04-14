@@ -1,17 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 V8.7.1 Live Config (18日动量 + 标普宏观真锚 + 宏观防抖 + 自动平替拦截 + 硬止损熔断 + PushPlus推送)
-V8.7.1 变更：
-- 回滚至 V8.7 纯 RSRS 动量核心算法
-- 新增 PUSHPLUS_TOKEN 支持微信实盘信号推送
 """
 import datetime
+import os  # 👈 关键修复：极有可能是之前漏掉了这个自带库的导入，导致读取 Token 时崩溃！
 
 class Config:
 
     # === 📱 微信推送配置 ===
-    # 请在 http://www.pushplus.plus/ 登录后获取您的 token，填入下方。留空则不推送。
-    PUSHPLUS_TOKEN = ""
+    # 优先读取系统环境变量（如 GitHub Secrets）。如果是在本地运行，可以直接把 Token 填在后面的引号里。
+    PUSHPLUS_TOKEN = os.environ.get("PUSHPLUS_TOKEN", "")
 
     # 实盘设为去年的某一天（如 "20240101"）以极大提升数据抓取速度
     START_DATE = "20240101"
