@@ -1,4 +1,4 @@
-name: "\U0001F4C8 V8.8 ETF\u52A8\u91CF\u8F6E\u52A8 - \u6BCF\u5468\u4E94\u81EA\u52A8\u4FE1\u53F7"
+name: "📈 V8.7.1 ETF动量轮动 - 每周五自动信号"
 
 on:
   schedule:
@@ -20,30 +20,35 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: "\U0001F4E5 Checkout repository"
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: "\U0001F40D Setup Python 3.11"
+      - name: "🐍 Setup Python 3.11"
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: "\U0001F4E6 Install dependencies"
+      - name: "📦 Install dependencies"
         run: |
           pip install --upgrade pip
           pip install pandas numpy akshare requests
 
-      - name: "\U0001F680 Run strategy signal engine"
+      - name: "🚀 Run strategy signal engine"
         id: run_signal
+        # 👇 在这里将 GitHub Secrets 中的 Token 传递给 Python 环境
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: |
           STRATEGY="${{ github.event.inputs.strategy || 'final' }}"
           echo "Running strategy: $STRATEGY"
-          python v8_live_signal.py --strategy $STRATEGY 2>&1 | tee signal_output.txt
+          # 注意：请确保此处运行的 Python 文件名与您仓库里的文件名一致
+          # 如果您依然叫 v8_live_signal.py，请把下方改成 v8_live_signal.py
+          python v8.7.1_live_signal.py --strategy $STRATEGY 2>&1 | tee signal_output.txt
           echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      - name: "\U0001F4CB Extract signal summary"
+      - name: "📋 Extract signal summary"
         id: extract
         run: |
           python3 - <<'EOF'
@@ -54,7 +59,7 @@ jobs:
           summary_lines = []
           capture = False
           for line in lines:
-              if "V8.8 LIVE DASHBOARD" in line:
+              if "LIVE DASHBOARD" in line:  # 优化：兼容 V8.7.1 标题
                   capture = True
               if capture:
                   summary_lines.append(line)
@@ -71,7 +76,7 @@ jobs:
           print(f"Summary length: {len(summary)} chars")
           EOF
 
-      - name: "\U0001F4BE Commit updated portfolio state"
+      - name: "💾 Commit updated portfolio state"
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "GitHub Actions Bot"
@@ -83,7 +88,7 @@ jobs:
             git push
           fi
 
-      - name: "\U0001F4CE Upload signal output as artifact"
+      - name: "📎 Upload signal output as artifact"
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -93,47 +98,3 @@ jobs:
             signal_summary.txt
             portfolio_state.json
           retention-days: 30
-
-      - name: "\U0001F4F1 Send WeChat notification via PushPlus"
-        if: always()
-        run: |
-          # 构建推送内容（HTML格式）
-          STRATEGY="${{ steps.run_signal.outputs.strategy }}"
-          RUN_NUMBER="${{ github.run_number }}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          # 读取信号摘要
-          SUMMARY=$(cat signal_summary.txt 2>/dev/null || echo "信号摘要读取失败")
-
-          # 构建 HTML 内容
-          CONTENT="<h3>V8.8 跨资产ETF动量轮动系统 - 本周信号</h3>"
-          CONTENT="${CONTENT}<p><b>运行编号：</b>#${RUN_NUMBER}</p>"
-          CONTENT="${CONTENT}<p><b>策略模式：</b>${STRATEGY}</p>"
-          CONTENT="${CONTENT}<hr>"
-          CONTENT="${CONTENT}<pre style='font-size:12px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;'>"
-          CONTENT="${CONTENT}$(echo "$SUMMARY" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
-          CONTENT="${CONTENT}</pre>"
-          CONTENT="${CONTENT}<hr>"
-          CONTENT="${CONTENT}<p>完整输出请在 <a href='${RUN_URL}'>GitHub Actions Artifacts</a> 中下载查看。</p>"
-          CONTENT="${CONTENT}<p><b>提示：</b>请在周五 14:45-15:00 之间执行下单，先 SELL 后 BUY。</p>"
-
-          # 调用 PushPlus API 发送微信推送
-          RESPONSE=$(curl -s -X POST "http://www.pushplus.plus/send" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"token\": \"${{ secrets.PUSHPLUS_TOKEN }}\",
-              \"title\": \"📈 V8.8 ETF轮动信号 | ${STRATEGY} 模式 | 第${RUN_NUMBER}期\",
-              \"content\": $(echo "$CONTENT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
-              \"template\": \"html\"
-            }")
-
-          echo "PushPlus Response: $RESPONSE"
-
-          # 检查返回状态
-          CODE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('code', 'unknown'))" 2>/dev/null || echo "parse_error")
-          if [ "$CODE" = "200" ]; then
-            echo "✅ 微信推送发送成功"
-          else
-            echo "⚠️ 微信推送可能失败，返回码: $CODE"
-            echo "完整响应: $RESPONSE"
-          fi
