@@ -17,7 +17,7 @@ class Config:
 
     # === 🌟 核心动量参数 (经过严苛矩阵验证的最优错峰解) ===
     N_DAYS = 18 
-    RSRS_THRESHOLD = 0.0 
+    RSRS_THRESHOLD = 0.05
     TOP_N = 2
     SIGNAL_LAG_DAYS = 1  # 盘中(周五14:45)执行必须设为1，防前视偏差
 
@@ -25,10 +25,10 @@ class Config:
     US10Y_STOOQ_SYMBOL = "10yusy.b"
     MACRO_DRIFT = 0.05  # [宏观钝化]: 增加5个基点缓冲，防均线附近微幅震荡导致来回切割
     HALF_CRISIS_ENABLED = True
-    HALF_CRISIS_RISK_WEIGHT = 0.5
+    HALF_CRISIS_RISK_WEIGHT = 0
     HALF_CRISIS_APPLY_TO_PURE = True 
     MIN_REBAL_ENABLED = True
-    MIN_REBAL_TURNOVER = 0.05
+    MIN_REBAL_TURNOVER = 0.03
 
     # === 🛑 硬止损 & 熔断参数 (V8.7 新增) ===
     HARD_STOP_ENABLED = False            # 硬止损总开关
